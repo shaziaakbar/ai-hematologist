@@ -3,6 +3,7 @@ import torch
 import albumentations as A
 import torchvision
 from torch.utils.tensorboard import SummaryWriter
+from sklearn.model_selection import train_test_split
 
 from src.datasets import SegmentationDataset
 from src.utils import read_training_data_df, get_optimizer, get_criterion
@@ -10,6 +11,8 @@ from src.utils import read_training_data_df, get_optimizer, get_criterion
 # Require for Mac download
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
+
+DEVICE = "mps"
 
 
 def get_dataloader(data_df, shuffle=False, bs=24, num_workers=0):
@@ -80,6 +83,7 @@ def train_model(dataloader, model, epoch, optimizer, criterion, tb_writer=None):
     loss_idx_value = (epoch * len(dataloader))
     for i, data in enumerate(dataloader, 0):
         inputs, labels = data
+        inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
 
         optimizer.zero_grad()
         outputs = model(inputs)
@@ -88,12 +92,11 @@ def train_model(dataloader, model, epoch, optimizer, criterion, tb_writer=None):
         optimizer.step()
 
         # Get dice performance for current batch
-        correct = abs(1 - loss.item())
+        correct = torch.abs(torch.Tensor([1]) - loss.item())
         running_correct += correct
 
         # print statistics
-        if i % 10 == 9:
-            print(f'[{epoch + 1}, {i + 1:5d}] loss: {loss / 9:.6f}; acc: {correct:.6f}')
+        print(f'[{epoch + 1}, {i + 1:5d}] loss: {loss:.6f}; acc: {float(correct.detach().cpu()):.6f}')
 
         if tb_writer is not None:
             tb_writer.add_scalar("Loss/Minibatches", loss, loss_idx_value)
@@ -101,23 +104,33 @@ def train_model(dataloader, model, epoch, optimizer, criterion, tb_writer=None):
 
     if tb_writer is not None:
         tb_writer.add_scalar("Loss/Epochs", loss, epoch)
-        tb_writer.add_scalar("Accuracy/Epochs", running_correct // len(dataloader), epoch)
+        tb_writer.add_scalar("Accuracy/Epochs", running_correct / len(dataloader), epoch)
 
 
 def validate_model(dataloader, model, epoch, criterion, tb_writer=None):
-    model.eval()
-    correct = 0
-    for i, data in enumerate(dataloader, 0):
-        images, labels = data
+    """ Evaluate dice on validation set.
 
-        outputs = model(images)
-        correct += abs(1 - criterion(outputs, labels))
+    Args:
+        dataloader (torch Dataloader): initialized dataloader containing validation data
+        model (torch Model): torch model with weights
+        epoch (int): current epoch
+        criterion: function for assessing dice loss
+        tb_writer (optional): Tensorboard writer
+    """
+    model.eval()
+    correct = 0.0
+    for i, data in enumerate(dataloader, 0):
+        inputs, labels = data
+        inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
+
+        outputs = model(inputs)
+        correct += torch.abs(torch.Tensor([1]) - criterion(outputs["out"], labels).detach().cpu())
 
     if tb_writer is not None:
-        tb_writer.add_scalar("Accuracy/Validation", (correct // len(dataloader)), epoch)
+        tb_writer.add_scalar("Accuracy/Validation", correct / len(dataloader), epoch)
 
 
-def main(dir, save_dir, epochs, model_name, optimizer):
+def main(dir, save_dir, epochs, model_name, optimizer, batch_size):
     """ Main function for training and validating cell segmentation model.
 
     Args:
@@ -127,13 +140,16 @@ def main(dir, save_dir, epochs, model_name, optimizer):
         model_name(str): type of model to train
         optimizer (str): name of optimizer
     """
-    train_df = read_training_data_df(dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext="_label.png")
+    df = read_training_data_df(dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext="_label.png")
+    train_df, val_df = train_test_split(df, test_size=0.1)
 
-    train_dataloader = get_dataloader(train_df[:-10], shuffle=True)
-    val_dataloader = get_dataloader(train_df[-10:], shuffle=False)
+    train_dataloader = get_dataloader(train_df, shuffle=True, bs=batch_size)
+    val_dataloader = get_dataloader(val_df, shuffle=False, bs=batch_size)
 
     print("Building model...")
     model = build_model(model_name=model_name)
+    model.to(DEVICE)
+
     optimizer = get_optimizer(model, optimizer)
     criterion = get_criterion()
     writer = SummaryWriter()
@@ -153,6 +169,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_epochs', default=200, required=False, help='number of training epochs')
     parser.add_argument('--model_name', default="fcn", required=False, help='type of model')
     parser.add_argument('--optimizer_name', default="adam", required=False, help='type of optimizer')
+    parser.add_argument('--batch_size', default=12, required=False)
     args = parser.parse_args()
 
-    main(args.data_dir, args.output_dir, args.num_epochs, args.model_name, args.optimizer_name)
+    main(args.data_dir, args.output_dir, args.num_epochs, args.model_name, args.optimizer_name, args.batch_size)
