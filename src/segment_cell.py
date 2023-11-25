@@ -6,7 +6,7 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearn.model_selection import train_test_split
 
 from src.datasets import SegmentationDataset
-from src.utils import read_training_data_df, get_optimizer, get_criterion
+from src.utils import read_training_data_df, get_optimizer, get_criterion, save_masks
 
 # Require for Mac download
 import ssl
@@ -82,7 +82,7 @@ def train_model(dataloader, model, epoch, optimizer, criterion, tb_writer=None):
     running_correct = 0
     loss_idx_value = (epoch * len(dataloader))
     for i, data in enumerate(dataloader, 0):
-        inputs, labels = data
+        _, inputs, labels = data
         inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
 
         optimizer.zero_grad()
@@ -120,7 +120,7 @@ def validate_model(dataloader, model, epoch, criterion, tb_writer=None):
     model.eval()
     correct = 0.0
     for i, data in enumerate(dataloader, 0):
-        inputs, labels = data
+        _, inputs, labels = data
         inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
 
         outputs = model(inputs)
@@ -160,13 +160,14 @@ def main(dir, save_dir, epochs, model_name, optimizer, batch_size):
         validate_model(val_dataloader, model, _e, criterion, tb_writer=writer)
 
     writer.close()
+    save_masks(val_dataloader, model, save_dir, device=DEVICE)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', metavar='path', required=True, help='path to ground truth evaluation data')
     parser.add_argument('--output_dir', metavar='path', required=True, help='path where results will be saved')
-    parser.add_argument('--num_epochs', default=200, required=False, help='number of training epochs')
+    parser.add_argument('--num_epochs', default=2, required=False, help='number of training epochs')
     parser.add_argument('--model_name', default="fcn", required=False, help='type of model')
     parser.add_argument('--optimizer_name', default="adam", required=False, help='type of optimizer')
     parser.add_argument('--batch_size', default=12, required=False)

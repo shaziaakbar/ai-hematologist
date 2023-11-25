@@ -1,8 +1,8 @@
 import pandas as pd
 import glob
-import os
 import torch
-from medpy import metric
+from PIL import Image
+import os
 
 
 def read_training_data_df(base_dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext=".png"):
@@ -69,3 +69,27 @@ def get_criterion():
         loss = 1 - num / den
         return loss.mean()
     return DiceLoss
+
+
+def save_masks(dataloader, model, save_dir, original_size=[400,400], device="cpu"):
+    """ Save outputs from model into images containing masks.
+
+    Args:
+        dataloader (torch Dataloader): initialized dataloader containing test data
+        model (torch Model): torch model with weights
+        save_dir (str): path to output directory
+        original_size (list[int]): size of saved image
+        device (str): device that model resides in
+    """
+    model.eval()
+    for i, data in enumerate(dataloader, 0):
+        img_id, inputs, labels = data
+        inputs, labels = inputs.to(device), labels.to(device)
+
+        outputs = model(inputs)
+        for j in range(inputs.size(0)):
+            current_img = torch.argmax(outputs["out"][j], dim=0).detach().cpu().numpy().astype('bool')
+            img = Image.fromarray(current_img).resize(original_size)   # resize back to original shape
+
+            filename = os.path.join(save_dir, str(img_id[j]) + "_label.png")
+            img.save(filename)

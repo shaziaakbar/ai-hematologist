@@ -29,9 +29,9 @@ class SegmentationDataset(torch.utils.data.Dataset):
                 transformed = self.transform(image=image, mask=label)
                 img = transformed["image"]
                 seg = transformed["mask"]
-                return img.transpose(2, 0, 1), seg.transpose(2, 0, 1)
+                return row["id"], img.transpose(2, 0, 1), seg.transpose(2, 0, 1)
             else:
                 img = self.transform(image=image)["image"]
-                return img.transpose(2, 0, 1)
+                return row["id"], img.transpose(2, 0, 1)
 
 
