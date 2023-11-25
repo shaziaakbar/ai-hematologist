@@ -167,7 +167,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', metavar='path', required=True, help='path to ground truth evaluation data')
     parser.add_argument('--output_dir', metavar='path', required=True, help='path where results will be saved')
-    parser.add_argument('--num_epochs', default=2, required=False, help='number of training epochs')
+    parser.add_argument('--num_epochs', default=200, required=False, help='number of training epochs')
     parser.add_argument('--model_name', default="fcn", required=False, help='type of model')
     parser.add_argument('--optimizer_name', default="adam", required=False, help='type of optimizer')
     parser.add_argument('--batch_size', default=12, required=False)
