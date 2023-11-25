@@ -71,7 +71,7 @@ def get_criterion():
     return DiceLoss
 
 
-def save_masks(dataloader, model, save_dir, original_size=[400,400], device="cpu"):
+def save_binary_masks(dataloader, model, save_dir, original_size=[400,400], device="cpu"):
     """ Save outputs from model into images containing masks.
 
     Args:

@@ -4,7 +4,7 @@ import numpy as np
 
 
 class SegmentationDataset(torch.utils.data.Dataset):
-    def __init__(self, dataframe, transform=None, label_idx=1):
+    def __init__(self, dataframe, transform=None, label_idx=0):
         self.dataframe = dataframe
         self.transform = transform
         self.label_idx = label_idx
