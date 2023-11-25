@@ -62,9 +62,18 @@ def build_model(model_name="fcn", pretrain=None, num_classes=2):
         PyTorch model pretrained with specified weights
     """
     if model_name == "fcn":
-        model = torchvision.models.segmentation.fcn_resnet101(weights=pretrain, num_classes=num_classes)
+        model = torchvision.models.segmentation.fcn_resnet50(weights=pretrain)
+    elif model_name == "deeplab":
+        model = torchvision.models.segmentation.deeplabv3_resnet50(weights=pretrain)
     else:
         raise NotImplementedError("model {} not implemented".format(model_name))
+
+    classifier = list(model.classifier.children())
+    model.classifier = torch.nn.Sequential(*classifier[:-1])
+    model.classifier.add_module('last_conv', torch.nn.Conv2d(classifier[-1].in_channels, num_classes,
+                                                             kernel_size=classifier[-1].kernel_size,
+                                                             stride=classifier[-1].stride)
+                                )
     return model
 
 
@@ -132,38 +141,34 @@ def validate_model(dataloader, model, epoch, criterion, tb_writer=None):
         tb_writer.add_scalar("Accuracy/Validation", correct / len(dataloader), epoch)
 
 
-def main(dir, save_dir, epochs, model_name, optimizer, batch_size):
+def main(_args):
     """ Main function for training and validating cell segmentation model.
 
     Args:
-        dir (str): path to parent directory containing all data
-        save_dir (str): path to output directory
-        epochs (int): number of training epochs
-        model_name(str): type of model to train
-        optimizer (str): name of optimizer
+        _args (dict): arguments from user
     """
-    df = read_training_data_df(dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext="_label.png")
+    df = read_training_data_df(args.data_dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext="_label.png")
     train_df, val_df = train_test_split(df, test_size=0.1)
 
-    train_dataloader = get_dataloader(train_df, shuffle=True, bs=batch_size)
-    val_dataloader = get_dataloader(val_df, shuffle=False, bs=batch_size)
+    train_dataloader = get_dataloader(train_df, shuffle=True, bs=args.batch_size)
+    val_dataloader = get_dataloader(val_df, shuffle=False, bs=args.batch_size)
 
     print("Building model...")
-    model = build_model(model_name=model_name)
+    model = build_model(model_name=args.model_name, pretrain=args.model_weights)
     model.to(DEVICE)
 
-    optimizer = get_optimizer(model, optimizer)
+    optimizer = get_optimizer(model, args.optimizer_name)
     criterion = get_criterion()
     writer = SummaryWriter()
 
     print("Training...")
-    for _e in range(epochs):
+    for _e in range(int(args.num_epochs)):
         train_model(train_dataloader, model, _e, optimizer, criterion, tb_writer=writer)
         validate_model(val_dataloader, model, _e, criterion, tb_writer=writer)
 
     writer.close()
-    torch.save(model, os.path.join(save_dir, "model.pt"))
-    save_binary_masks(val_dataloader, model, save_dir, device=DEVICE)
+    torch.save(model, os.path.join(args.output_dir, "model.pt"))
+    save_binary_masks(val_dataloader, model, args.output_dir, device=DEVICE)
 
 
 if __name__ == "__main__":
@@ -172,8 +177,9 @@ if __name__ == "__main__":
     parser.add_argument('--output_dir', metavar='path', required=True, help='path where results will be saved')
     parser.add_argument('--num_epochs', default=100, required=False, help='number of training epochs')
     parser.add_argument('--model_name', default="fcn", required=False, help='type of model')
+    parser.add_argument('--model_weights', default=None, required=False, help='type of model')
     parser.add_argument('--optimizer_name', default="adam", required=False, help='type of optimizer')
     parser.add_argument('--batch_size', default=12, required=False)
     args = parser.parse_args()
 
-    main(args.data_dir, args.output_dir, args.num_epochs, args.model_name, args.optimizer_name, args.batch_size)
+    main(args)
