@@ -162,6 +162,8 @@ def main(_args):
     """
     df = utils.read_training_data_df(args.data_dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext="_label.png")
     train_df, val_df = train_test_split(df, test_size=0.1)
+    train_df.to_csv(os.path.join(args.output_dir, "train.csv"))
+    val_df.to_csv(os.path.join(args.output_dir, "val.csv"))
 
     train_dataloader = get_dataloader(train_df, shuffle=True, bs=args.batch_size)
     val_dataloader = get_dataloader(val_df, shuffle=False, bs=args.batch_size)
@@ -181,6 +183,8 @@ def main(_args):
         validate_model(val_dataloader, model, _e, val_criterion, tb_writer=writer)
 
     writer.close()
+
+    print("Saving outputs...")
     torch.save(model, os.path.join(args.output_dir, "model.pt"))
     utils.save_binary_masks(val_dataloader, model, args.output_dir, device=DEVICE)
 

@@ -4,6 +4,8 @@ import torch
 from PIL import Image
 import os
 import src.mask_operations as mask_op
+from medpy import metric
+import numpy as np
 
 
 def read_training_data_df(base_dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext=".png"):
@@ -95,9 +97,19 @@ def save_binary_masks(dataloader, model, save_dir, original_size=[400,400], devi
         device (str): device that model resides in
     """
     model.eval()
+
+    gt = False
+    dice_scores = []
+    if "seg_path" in dataloader.dataset.dataframe.columns:
+        gt = True
+
     for i, data in enumerate(dataloader, 0):
-        img_id, inputs, labels = data
-        inputs, labels = inputs.to(device), labels.to(device)
+        if gt:
+            img_id, inputs, labels = data
+            labels = labels.to(device)
+        else:
+            img_id, inputs = data
+        inputs = inputs.to(device)
 
         outputs = model(inputs)
         for j in range(inputs.size(0)):
@@ -106,4 +118,11 @@ def save_binary_masks(dataloader, model, save_dir, original_size=[400,400], devi
 
             filename = os.path.join(save_dir, str(img_id[j]) + "_label.png")
             img.save(filename)
+
+            if gt:
+                current_label = labels[j].detach().cpu().numpy().astype('bool')
+                dice_scores.append(metric.binary.dc(current_img, current_label))
+
+    pd.DataFrame(dice_scores, columns=["dice"]).to_csv(os.path.join(save_dir, "dice_scores.csv"))
+    print("Average dice: {:.6f}".format(np.mean(np.array(dice_scores))))
 
