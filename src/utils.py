@@ -4,7 +4,6 @@ import torch
 from PIL import Image
 import os
 import src.mask_operations as mask_op
-from medpy import metric
 import numpy as np
 
 
@@ -86,6 +85,26 @@ def get_criterion(criterion_name="cross_entropy"):
     return fn
 
 
+def medpy_dc(result, reference):
+    r"""
+    Same as the medpy dice function but supported for numpy v23.0.0 and greater.
+    """
+    result = np.atleast_1d(result.astype(np.bool_))
+    reference = np.atleast_1d(reference.astype(np.bool_))
+
+    intersection = np.count_nonzero(result & reference)
+
+    size_i1 = np.count_nonzero(result)
+    size_i2 = np.count_nonzero(reference)
+
+    try:
+        dc = 2. * intersection / float(size_i1 + size_i2)
+    except ZeroDivisionError:
+        dc = 0.0
+
+    return dc
+
+
 def save_binary_masks(dataloader, model, save_dir, original_size=[400,400], device="cpu"):
     """ Save outputs from model into images containing masks.
 
@@ -112,16 +131,17 @@ def save_binary_masks(dataloader, model, save_dir, original_size=[400,400], devi
         inputs = inputs.to(device)
 
         outputs = model(inputs)
+
         for j in range(inputs.size(0)):
-            current_img = torch.argmax(outputs["out"][j], dim=0).detach().cpu().numpy().astype('bool')
+            current_img = torch.argmax(outputs["out"][j], dim=0).detach().cpu().numpy().astype("bool")
             img = Image.fromarray(current_img).resize(original_size)   # resize back to original shape
 
             filename = os.path.join(save_dir, str(img_id[j]) + "_label.png")
             img.save(filename)
 
             if gt:
-                current_label = labels[j].detach().cpu().numpy().astype('bool')
-                dice_scores.append(metric.binary.dc(current_img, current_label))
+                current_label = labels[j].detach().cpu().numpy().astype("bool")
+                dice_scores.append(medpy_dc(current_img, current_label))
 
     pd.DataFrame(dice_scores, columns=["dice"]).to_csv(os.path.join(save_dir, "dice_scores.csv"))
     print("Average dice: {:.6f}".format(np.mean(np.array(dice_scores))))

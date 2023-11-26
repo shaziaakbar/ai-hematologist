@@ -1,7 +1,7 @@
 import os.path
 import glob
 import argparse
-from medpy import metric
+from src.utils import medpy_dc
 from skimage import io
 import pandas as pd
 
@@ -16,8 +16,8 @@ def get_dice_scores(label_seg, label_gt):
     Returns:
         Whole cell dice and nucleas dice scores.
     """
-    whole_cell_dc = metric.binary.dc(label_seg>0, label_gt>0)
-    nucleus_dc = metric.binary.dc(label_seg==2, label_gt==2)
+    whole_cell_dc = medpy_dc(label_seg>0, label_gt>0)
+    nucleus_dc = medpy_dc(label_seg==2, label_gt==2)
 
     return whole_cell_dc, nucleus_dc
 
