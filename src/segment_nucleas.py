@@ -13,26 +13,43 @@ import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
-class CustomViT(torchvision.models.vit.ViT):
-    def __init__(self, *args, **kwargs):
-        super(CustomViT, self).__init__(*args, **kwargs)
+class CustomViT(torch.nn.Module):
+    def __init__(self, image_size=224, patch_size=16, dim=768, depth=12,
+                 heads=12, mlp_dim=3072, dropout=0.1, emb_dropout=0.1,
+                 num_classes=2):
+        super(CustomViT, self).__init__()
 
-        # Modify the architecture to have a decoder
+        # ViT Encoder
+        self.vit_encoder = torchvision.models.vit_l_16(
+            image_size=image_size,
+            patch_size=patch_size,
+            num_classes=num_classes,
+            dim=dim,
+            depth=depth,
+            heads=heads,
+            mlp_dim=mlp_dim,
+            dropout=dropout,
+            emb_dropout=emb_dropout
+        )
+
+        # Decoder
+        self.decoder = torch.nn.Sequential(
+            # insert decoder for this viT
+        )
+
+    def forward(self, x):
+        features = self.vit_encoder(x)
+        segmentation_mask = self.decoder(features)
+        return segmentation_mask
 
 
 class NucleasTrainer(Trainer):
     def build_model(self, model_name, pretrain=None, num_classes=2):
         if model_name == "vit":
-            model = torchvision.models.vit_b_16(weights=pretrain)
+            model = CustomViT()
         else:
             raise NotImplementedError("model {} not implemented".format(model_name))
 
-        classifier = list(model.classifier.children())
-        model.classifier = torch.nn.Sequential(*classifier[:-1])
-        model.classifier.add_module('last_conv', torch.nn.Conv2d(classifier[-1].in_channels, num_classes,
-                                                                 kernel_size=classifier[-1].kernel_size,
-                                                                 stride=classifier[-1].stride)
-                                    )
         return model
 
 
