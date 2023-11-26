@@ -7,7 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 from sklearn.model_selection import train_test_split
 
 from src.datasets import SegmentationDataset
-from src.utils import read_training_data_df, get_optimizer, get_criterion, save_binary_masks
+import src.utils as utils
 
 # Require for Mac download
 import ssl
@@ -29,15 +29,14 @@ def get_dataloader(data_df, shuffle=False, bs=24, num_workers=0):
         Pytorch dataloader
     """
     if not shuffle:
-        crop = [A.Resize(256, 256), A.CenterCrop(224, 224)]
+        crop = [A.Resize(224, 224)]
     else:
         # augment data during training
         crop = [
-            A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.4),
-            A.RGBShift(r_shift_limit=10, g_shift_limit=10, b_shift_limit=10, p=0.4),
-            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.4),
-            A.Resize(224, 224),
-            A.CenterCrop(224, 224)
+            A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.6),
+            A.RGBShift(r_shift_limit=10, g_shift_limit=10, b_shift_limit=10, p=0.6),
+            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.6),
+            A.Resize(224, 224)
         ]
 
     dataset = SegmentationDataset(data_df,
@@ -50,7 +49,7 @@ def get_dataloader(data_df, shuffle=False, bs=24, num_workers=0):
     return torch.utils.data.DataLoader(dataset, shuffle=shuffle, batch_size=bs, num_workers=num_workers)
 
 
-def build_model(model_name="fcn", pretrain=None, num_classes=2):
+def build_model(model_name="fcn", pretrain=None, num_classes=2, freeze=True):
     """ Get torch model for training.
 
     Args:
@@ -74,6 +73,13 @@ def build_model(model_name="fcn", pretrain=None, num_classes=2):
                                                              kernel_size=classifier[-1].kernel_size,
                                                              stride=classifier[-1].stride)
                                 )
+
+    if freeze:
+        for name, child in model.named_children():
+            if name in ["backbone"]:
+                for param in child.parameters():
+                    param.requires_grad = False
+
     return model
 
 
@@ -87,6 +93,9 @@ def train_model(dataloader, model, epoch, optimizer, criterion, tb_writer=None):
         optimizer: torch optimizer
         criterion: function for assessing loss
         tb_writer (optional): Tensorboard writer
+
+    Returns:
+        Trained model
     """
     model.train()
 
@@ -97,17 +106,18 @@ def train_model(dataloader, model, epoch, optimizer, criterion, tb_writer=None):
         inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
 
         optimizer.zero_grad()
+
         outputs = model(inputs)
-        loss = criterion(outputs["out"], labels)
+        loss = criterion(outputs["out"], labels.squeeze().long())
+        predict = torch.argmax(outputs["out"], dim=1)
+        correct = (predict == labels.squeeze()).sum() / torch.numel(labels)
+        running_correct += correct
+
         loss.backward()
         optimizer.step()
 
-        # Get dice performance for current batch
-        correct = torch.abs(torch.Tensor([1]) - loss.item())
-        running_correct += correct
-
         # print statistics
-        print(f'[{epoch + 1}, {i + 1:5d}] loss: {loss:.6f}; acc: {float(correct.detach().cpu()):.6f}')
+        print(f'[{epoch + 1}, {i + 1:5d}] loss: {loss:.6f}, correct: {correct:.6f}')
 
         if tb_writer is not None:
             tb_writer.add_scalar("Loss/Minibatches", loss, loss_idx_value)
@@ -116,6 +126,8 @@ def train_model(dataloader, model, epoch, optimizer, criterion, tb_writer=None):
     if tb_writer is not None:
         tb_writer.add_scalar("Loss/Epochs", loss, epoch)
         tb_writer.add_scalar("Accuracy/Epochs", running_correct / len(dataloader), epoch)
+
+    return model
 
 
 def validate_model(dataloader, model, epoch, criterion, tb_writer=None):
@@ -135,7 +147,8 @@ def validate_model(dataloader, model, epoch, criterion, tb_writer=None):
         inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
 
         outputs = model(inputs)
-        correct += torch.abs(torch.Tensor([1]) - criterion(outputs["out"], labels).detach().cpu())
+        predict = torch.argmax(outputs["out"], dim=1)
+        correct += (predict == labels.squeeze()).sum() / torch.numel(labels)
 
     if tb_writer is not None:
         tb_writer.add_scalar("Accuracy/Validation", correct / len(dataloader), epoch)
@@ -147,7 +160,7 @@ def main(_args):
     Args:
         _args (dict): arguments from user
     """
-    df = read_training_data_df(args.data_dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext="_label.png")
+    df = utils.read_training_data_df(args.data_dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext="_label.png")
     train_df, val_df = train_test_split(df, test_size=0.1)
 
     train_dataloader = get_dataloader(train_df, shuffle=True, bs=args.batch_size)
@@ -157,18 +170,19 @@ def main(_args):
     model = build_model(model_name=args.model_name, pretrain=args.model_weights)
     model.to(DEVICE)
 
-    optimizer = get_optimizer(model, args.optimizer_name)
-    criterion = get_criterion()
+    optimizer = utils.get_optimizer(model, args.optimizer_name)
+    train_criterion = utils.get_criterion()
+    val_criterion = utils.get_criterion(criterion_name="dice")
     writer = SummaryWriter()
 
     print("Training...")
     for _e in range(int(args.num_epochs)):
-        train_model(train_dataloader, model, _e, optimizer, criterion, tb_writer=writer)
-        validate_model(val_dataloader, model, _e, criterion, tb_writer=writer)
+        model = train_model(train_dataloader, model, _e, optimizer, train_criterion, tb_writer=writer)
+        validate_model(val_dataloader, model, _e, val_criterion, tb_writer=writer)
 
     writer.close()
     torch.save(model, os.path.join(args.output_dir, "model.pt"))
-    save_binary_masks(val_dataloader, model, args.output_dir, device=DEVICE)
+    utils.save_binary_masks(val_dataloader, model, args.output_dir, device=DEVICE)
 
 
 if __name__ == "__main__":
@@ -177,9 +191,9 @@ if __name__ == "__main__":
     parser.add_argument('--output_dir', metavar='path', required=True, help='path where results will be saved')
     parser.add_argument('--num_epochs', default=100, required=False, help='number of training epochs')
     parser.add_argument('--model_name', default="fcn", required=False, help='type of model')
-    parser.add_argument('--model_weights', default=None, required=False, help='type of model')
+    parser.add_argument('--model_weights', default=None, required=False, help='type of model weights')
     parser.add_argument('--optimizer_name', default="adam", required=False, help='type of optimizer')
-    parser.add_argument('--batch_size', default=12, required=False)
+    parser.add_argument('--batch_size', default=24, required=False)
     args = parser.parse_args()
 
     main(args)

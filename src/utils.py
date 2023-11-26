@@ -3,6 +3,7 @@ import glob
 import torch
 from PIL import Image
 import os
+import src.mask_operations as mask_op
 
 
 def read_training_data_df(base_dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext=".png"):
@@ -49,26 +50,38 @@ def read_val_data_df(base_dir, img_dir="imagesTr"):
 
 def get_optimizer(model, optimizer_name="adam"):
     if optimizer_name == "adam":
-        return torch.optim.Adam(model.parameters(), lr=0.001)
+        return torch.optim.Adam(model.parameters(), lr=0.0001)
     elif optimizer_name == "sgd":
         return torch.optim.SGD(model.parameters(), lr=0.001)
     else:
         raise NotImplementedError("optimizer {} not implemented".format(optimizer_name))
 
 
-def get_criterion():
+class DiceLoss(torch.nn.Module):
+    def __init__(self, weight=None, size_average=True):
+        super(DiceLoss, self).__init__()
+
+    def forward(self, inputs, targets, smooth=1):
+        inputs = torch.nn.functional.sigmoid(inputs)
+
+        inputs = inputs.view(-1)
+        targets = targets.view(-1)
+
+        intersection = (inputs * targets).sum()
+        dice = (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)
+
+        return 1 - dice
+
+
+def get_criterion(criterion_name="cross_entropy"):
     """ Get dice loss function that operated on tensors. """
-    def DiceLoss(predict, targets, smooth=1, p=2):
-        predict = torch.max(predict, dim=1, keepdim=True)[0]
-        predict = predict.contiguous().view(predict.shape[0], -1)
-        targets = targets.contiguous().view(targets.shape[0], -1)
-
-        num = torch.sum(torch.mul(predict, targets), dim=1) + smooth
-        den = torch.sum(predict.pow(p) + targets.pow(p), dim=1) + smooth
-
-        loss = 1 - num / den
-        return loss.mean()
-    return DiceLoss
+    if criterion_name == "dice":
+        fn = DiceLoss()
+    elif criterion_name == "cross_entropy":
+        fn = torch.nn.CrossEntropyLoss()
+    else:
+        raise NotImplementedError("{} not implemented".format(criterion_name))
+    return fn
 
 
 def save_binary_masks(dataloader, model, save_dir, original_size=[400,400], device="cpu"):
@@ -93,3 +106,4 @@ def save_binary_masks(dataloader, model, save_dir, original_size=[400,400], devi
 
             filename = os.path.join(save_dir, str(img_id[j]) + "_label.png")
             img.save(filename)
+
