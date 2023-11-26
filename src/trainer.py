@@ -13,38 +13,6 @@ class Trainer:
         self.criterion = None
         self.model = None
 
-    def get_dataloader(self, data_df, shuffle=False, bs=24, num_workers=0):
-        """ Get Torch dataloader for training/validation.
-
-        Args:
-            data_df (pandas DataFrame): contains paths to image and GT
-            shuffle (bool): whether to shuffle data
-            bs (int): batch size
-            num_workers (int): number of workers
-
-        Returns:
-            Pytorch dataloader
-        """
-        if not shuffle:
-            crop = [A.Resize(224, 224)]
-        else:
-            # augment data during training
-            crop = [
-                A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.6),
-                A.RGBShift(r_shift_limit=10, g_shift_limit=10, b_shift_limit=10, p=0.6),
-                A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.6),
-                A.Resize(224, 224)
-            ]
-
-        dataset = SegmentationDataset(data_df,
-                                      transform=A.Compose(
-                                          crop +
-                                          [A.Normalize(mean=[0.485, 0.456, 0.406],
-                                                       std=[0.229, 0.224, 0.225])]
-                                      ),
-                                      label_idx=0)
-        return torch.utils.data.DataLoader(dataset, shuffle=shuffle, batch_size=bs, num_workers=num_workers)
-
     def build_model(self, model_name="fcn", pretrain=None, num_classes=2):
         """ Get model architecture """
         raise NotImplementedError("model {} not implemented".format(model_name))
@@ -106,12 +74,12 @@ class Trainer:
         if self.tb_writer is not None:
             self.tb_writer.add_scalar("Accuracy/Validation", correct / len(dataloader), epoch)
 
-    def run(self, train_df, val_df):
+    def run(self, train_dataloader, val_dataloader):
         """ Main function for training and validating model.
 
         Args:
-            train_df (pandas DataFrame): contains training samples
-            val_df (pandas DataFrame): contains validation samples
+            train_dataloader (torch DataLoader): iterable function for training data
+            val_dataloader (torch DataLoader): iterable function for validation data
         """
         if self.model is None:
             self.model = self.build_model(model_name=self.config.model_name, pretrain=self.config.model_weights)
@@ -122,9 +90,6 @@ class Trainer:
 
         if self.criterion is None:
             self.criterion = utils.get_criterion()
-
-        train_dataloader = self.get_dataloader(train_df, shuffle=True, bs=self.config.batch_size)
-        val_dataloader = self.get_dataloader(val_df, shuffle=False, bs=self.config.batch_size)
 
         print("Training...")
         for _e in range(int(self.config.num_epochs)):

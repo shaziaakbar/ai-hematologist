@@ -60,14 +60,16 @@ def main(_args):
     train_df.to_csv(os.path.join(args.output_dir, "train.csv"))
     val_df.to_csv(os.path.join(args.output_dir, "val.csv"))
 
+    train_dataloader = utils.get_dataloader(train_df, shuffle=True, bs=args.batch_size, label_idx=0)
+    val_dataloader = utils.get_dataloader(val_df, shuffle=False, bs=args.batch_size, label_idx=0)
+
     writer = SummaryWriter()
     trainer = CellTrainer(args, tb_writer=writer)
-    trainer.run(train_df, val_df)
+    trainer.run(train_dataloader, val_dataloader)
     writer.close()
 
     print("Saving outputs...")
     torch.save(trainer.model, os.path.join(args.output_dir, "model.pt"))
-    val_dataloader = trainer.get_dataloader(val_df, shuffle=False, bs=args.batch_size)
     utils.save_binary_masks(val_dataloader, trainer.model, args.output_dir, device=args.device)
 
 
