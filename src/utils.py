@@ -51,7 +51,7 @@ def read_val_data_df(base_dir, img_dir="imagesTr"):
 
 def get_optimizer(model, optimizer_name="adam"):
     if optimizer_name == "adam":
-        return torch.optim.Adam(model.parameters(), lr=0.0001)
+        return torch.optim.Adam(model.parameters(), lr=0.00001)
     elif optimizer_name == "sgd":
         return torch.optim.SGD(model.parameters(), lr=0.001)
     else:
