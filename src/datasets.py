@@ -37,10 +37,28 @@ class SegmentationDataset(torch.utils.data.Dataset):
 
 
 class PatchSegmentationDataset(SegmentationDataset):
-    def __init__(self, dataframe, patch_size=[32, 32], stride=[8, 8], *args, **kwargs):
+    def __init__(self, dataframe, patch_size=[32, 32], stride=[16, 16], *args, **kwargs):
         super(PatchSegmentationDataset, self).__init__(dataframe, *args, **kwargs)
         self.patch_size = patch_size
         self.stride = stride
+
+    def extract_patches(self, image):
+        """ Extract patches from a whole image.
+
+        Args:
+            image (numpy): array containing images to be windowed
+
+        Returns:
+            Torch tensor containing patches of size self.patch_size and stride self.stride
+        """
+
+        # pad the edges to prevent the final image from being cropped
+        image = np.pad(image, ((0, 0), (self.patch_size[0] // 2, self.patch_size[0] // 2),
+                               (self.patch_size[1] // 2, self.patch_size[1] // 2)))
+
+        image = torch.from_numpy(image)
+        patches = image.unfold(1, self.patch_size[0], self.stride[0]).unfold(2, self.patch_size[1], self.stride[1])
+        return patches
 
     def __getitem__(self, index):
         data = super(PatchSegmentationDataset, self).__getitem__(index)
@@ -48,19 +66,19 @@ class PatchSegmentationDataset(SegmentationDataset):
         label = None
         if len(data) == 3:
             pat_id, image, label = data
-            label = torch.from_numpy(label)
         else:
             pat_id, image = data
 
-        image = torch.from_numpy(image)
-
-        patches = image.unfold(1, self.patch_size[0], self.stride[0]).unfold(2, self.patch_size[1], self.stride[1])
-        num_rows, num_cols = patches.shape[1], patches.shape[2]
-        patches = patches.flatten(start_dim=1, end_dim=2)
+        image = self.extract_patches(image)
+        num_rows, num_cols = image.shape[1], image.shape[2]
+        patches = image.flatten(start_dim=1, end_dim=2)
         pat_id = tuple(np.repeat(pat_id, num_rows * num_cols))
 
         if label is None:
             return pat_id, patches
         else:
-            label = torchvision.transforms.Resize(size=(num_rows, num_cols))(label).flatten()
+            label = self.extract_patches(label)
+            mid_x, mid_y = label.size(-2) // 2, label.size(-1) // 2
+            label = label[:, :, :, mid_x, mid_y].flatten()
             return pat_id, patches, label
+

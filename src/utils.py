@@ -5,9 +5,6 @@ from PIL import Image
 import os
 import src.mask_operations as mask_op
 import numpy as np
-import albumentations as A
-
-from src.datasets import SegmentationDataset
 
 
 def read_training_data_df(base_dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext=".png"):
@@ -150,39 +147,44 @@ def save_binary_masks(dataloader, model, save_dir, original_size=[400, 400], dev
     print("Average dice: {:.6f}".format(np.mean(np.array(dice_scores))))
 
 
-def get_dataloader(data_df, shuffle=False, bs=24, num_workers=0, label_idx=0, dataset_type=None, collate_fn=None):
-    """ Get Torch dataloader for training/validation.
+def save_patch_binary_masks(dataloader, model, save_dir, device="cpu",
+                            image_shape=(65,65), original_size=(400,400)):
+    """ Save outputs from model into images containing masks.
 
     Args:
-        data_df (pandas DataFrame): contains paths to image and GT
-        shuffle (bool): whether to shuffle data
-        bs (int): batch size
-        num_workers (int): number of workers
-
-    Returns:
-        Pytorch dataloader
+        dataloader (torch Dataloader): initialized dataloader containing test data
+        model (torch Model): torch model with weights
+        save_dir (str): path to output directory
+        device (str): device that model resides in
     """
-    if not shuffle:
-        crop = [A.Resize(224, 224)]
-    else:
-        # augment data during training
-        crop = [
-            A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.6),
-            A.RGBShift(r_shift_limit=10, g_shift_limit=10, b_shift_limit=10, p=0.6),
-            A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.6),
-            A.Resize(224, 224)
-        ]
+    model.eval()
 
-    if dataset_type is None:
-        dataset_type = SegmentationDataset
+    gt = False
+    dice_scores = []
+    if "seg_path" in dataloader.dataset.dataframe.columns:
+        gt = True
 
-    dataset = dataset_type(data_df,
-                           transform=A.Compose(
-                               crop +
-                               [A.Normalize(mean=[0.485, 0.456, 0.406],
-                                            std=[0.229, 0.224, 0.225])]
-                           ),
-                           label_idx=label_idx)
+    for i, data in enumerate(dataloader, 0):
+        if gt:
+            img_id, inputs, labels = data
+            labels = labels.to(device)
+        else:
+            img_id, inputs = data
+        inputs = inputs.to(device)
 
-    return torch.utils.data.DataLoader(dataset, shuffle=shuffle, batch_size=bs, num_workers=num_workers,
-                                       collate_fn=collate_fn)
+        outputs = model(inputs)
+
+        # reshape patched to image again
+        predicted_image = torch.argmax(outputs, dim=1).detach().cpu().numpy().astype("bool")
+        predicted_image_reshaped = predicted_image.reshape(image_shape)
+        img = Image.fromarray(predicted_image_reshaped).resize(original_size)
+
+        filename = os.path.join(save_dir, str(img_id[0]) + "_label.png")
+        img.save(filename)
+
+        if gt:
+            current_label = labels.detach().cpu().numpy().astype("bool")
+            dice_scores.append(medpy_dc(predicted_image.flatten(), current_label))
+
+    pd.DataFrame(dice_scores, columns=["dice"]).to_csv(os.path.join(save_dir, "dice_scores.csv"))
+    print("Average dice: {:.6f}".format(np.mean(np.array(dice_scores))))

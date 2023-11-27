@@ -1,6 +1,9 @@
 import torch
 from collections import OrderedDict
 import src.utils as utils
+import albumentations as A
+
+from src.datasets import SegmentationDataset
 
 
 class Trainer:
@@ -10,6 +13,40 @@ class Trainer:
         self.optimizer = None
         self.criterion = None
         self.model = None
+
+    def get_dataloader(self, data_df, shuffle=False, bs=24, num_workers=0, label_idx=0):
+        """ Get Torch dataloader for training/validation.
+
+        Args:
+            data_df (pandas DataFrame): contains paths to image and GT
+            shuffle (bool): whether to shuffle data
+            bs (int): batch size
+            num_workers (int): number of workers
+            label_idx (int): threshold to apply to cell images
+
+        Returns:
+            Pytorch dataloader
+        """
+        if not shuffle:
+            crop = [A.Resize(224, 224)]
+        else:
+            # augment data during training
+            crop = [
+                A.ShiftScaleRotate(shift_limit=0.2, scale_limit=0.2, rotate_limit=30, p=0.6),
+                A.RGBShift(r_shift_limit=10, g_shift_limit=10, b_shift_limit=10, p=0.6),
+                A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.6),
+                A.Resize(224, 224)
+            ]
+
+        dataset = SegmentationDataset(data_df,
+                                      transform=A.Compose(
+                                          crop +
+                                          [A.Normalize(mean=[0.485, 0.456, 0.406],
+                                                       std=[0.229, 0.224, 0.225])]
+                                      ),
+                                      label_idx=label_idx)
+
+        return torch.utils.data.DataLoader(dataset, shuffle=shuffle, batch_size=bs, num_workers=num_workers)
 
     def build_model(self, model_name="fcn", pretrain=None, num_classes=2):
         """ Get model architecture """
