@@ -1,7 +1,5 @@
 import torch
-import albumentations as A
-
-from src.datasets import SegmentationDataset
+from collections import OrderedDict
 import src.utils as utils
 
 
@@ -35,8 +33,11 @@ class Trainer:
             self.optimizer.zero_grad()
 
             outputs = self.model(inputs)
-            loss = self.criterion(outputs["out"], labels.squeeze().long())
-            predict = torch.argmax(outputs["out"], dim=1)
+            if type(outputs) == OrderedDict:
+                outputs = outputs["out"]
+
+            loss = self.criterion(outputs, labels.squeeze().long())
+            predict = torch.argmax(outputs, dim=1)
             correct = (predict == labels.squeeze()).sum() / torch.numel(labels)
             running_correct += correct
 
@@ -68,7 +69,10 @@ class Trainer:
             inputs, labels = inputs.to(self.config.device), labels.to(self.config.device)
 
             outputs = self.model(inputs)
-            predict = torch.argmax(outputs["out"], dim=1)
+            if type(outputs) == OrderedDict:
+                outputs = outputs["out"]
+
+            predict = torch.argmax(outputs, dim=1)
             correct += (predict == labels.squeeze()).sum() / torch.numel(labels)
 
         if self.tb_writer is not None:

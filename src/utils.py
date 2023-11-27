@@ -72,7 +72,7 @@ class DiceLoss(torch.nn.Module):
         targets = targets.view(-1)
 
         intersection = (inputs * targets).sum()
-        dice = (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)
+        dice = (2. * intersection + smooth) / (inputs.sum() + targets.sum() + smooth)
 
         return 1 - dice
 
@@ -108,7 +108,7 @@ def medpy_dc(result, reference):
     return dc
 
 
-def save_binary_masks(dataloader, model, save_dir, original_size=[400,400], device="cpu"):
+def save_binary_masks(dataloader, model, save_dir, original_size=[400, 400], device="cpu"):
     """ Save outputs from model into images containing masks.
 
     Args:
@@ -137,7 +137,7 @@ def save_binary_masks(dataloader, model, save_dir, original_size=[400,400], devi
 
         for j in range(inputs.size(0)):
             current_img = torch.argmax(outputs["out"][j], dim=0).detach().cpu().numpy().astype("bool")
-            img = Image.fromarray(current_img).resize(original_size)   # resize back to original shape
+            img = Image.fromarray(current_img).resize(original_size)  # resize back to original shape
 
             filename = os.path.join(save_dir, str(img_id[j]) + "_label.png")
             img.save(filename)
@@ -150,7 +150,7 @@ def save_binary_masks(dataloader, model, save_dir, original_size=[400,400], devi
     print("Average dice: {:.6f}".format(np.mean(np.array(dice_scores))))
 
 
-def get_dataloader(data_df, shuffle=False, bs=24, num_workers=0, label_idx=0):
+def get_dataloader(data_df, shuffle=False, bs=24, num_workers=0, label_idx=0, dataset_type=None, collate_fn=None):
     """ Get Torch dataloader for training/validation.
 
     Args:
@@ -173,11 +173,16 @@ def get_dataloader(data_df, shuffle=False, bs=24, num_workers=0, label_idx=0):
             A.Resize(224, 224)
         ]
 
-    dataset = SegmentationDataset(data_df,
-                                  transform=A.Compose(
-                                      crop +
-                                      [A.Normalize(mean=[0.485, 0.456, 0.406],
-                                                   std=[0.229, 0.224, 0.225])]
-                                  ),
-                                  label_idx=label_idx)
-    return torch.utils.data.DataLoader(dataset, shuffle=shuffle, batch_size=bs, num_workers=num_workers)
+    if dataset_type is None:
+        dataset_type = SegmentationDataset
+
+    dataset = dataset_type(data_df,
+                           transform=A.Compose(
+                               crop +
+                               [A.Normalize(mean=[0.485, 0.456, 0.406],
+                                            std=[0.229, 0.224, 0.225])]
+                           ),
+                           label_idx=label_idx)
+
+    return torch.utils.data.DataLoader(dataset, shuffle=shuffle, batch_size=bs, num_workers=num_workers,
+                                       collate_fn=collate_fn)
