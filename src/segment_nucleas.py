@@ -1,4 +1,6 @@
 import argparse
+
+import numpy as np
 import torch
 import torchvision
 import os
@@ -9,7 +11,7 @@ import albumentations as A
 
 from src.trainer import Trainer
 import src.utils as utils
-from src.datasets import PatchSegmentationDataset
+from src.datasets import PatchSegmentationDataset, NumpyPatchInferenceDataset
 
 # Require for Mac download
 import ssl
@@ -43,14 +45,17 @@ class NucleasTrainer(Trainer):
                 A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.6),
             ]
 
-        dataset = PatchSegmentationDataset(data_df,
-                                           transform=A.Compose(
-                                               init_transform +
-                                               [A.Normalize(mean=[0.485, 0.456, 0.406],
-                                                            std=[0.229, 0.224, 0.225])]
-                                           ),
-                                           label_idx=label_idx,
-                                           stride=stride)
+        if dataset_type is None:
+            dataset_type = PatchSegmentationDataset
+
+        dataset = dataset_type(data_df,
+                               transform=A.Compose(
+                                   init_transform +
+                                   [A.Normalize(mean=[0.485, 0.456, 0.406],
+                                                std=[0.229, 0.224, 0.225])]
+                               ),
+                               label_idx=label_idx,
+                               stride=stride)
 
         return torch.utils.data.DataLoader(dataset, shuffle=shuffle, batch_size=bs,
                                            num_workers=num_workers, collate_fn=collate_fn)
@@ -100,7 +105,7 @@ def main(_args):
     print("Saving outputs...")
     torch.save(trainer.model, os.path.join(args.output_dir, "model.pt"))
     val__full_dataloader = trainer.get_dataloader(val_df, shuffle=False, bs=args.batch_size,
-                                            collate_fn=collate_fn, stride=[8, 8])
+                                                  collate_fn=collate_fn, stride=[8, 8])
     utils.save_patch_binary_masks(val__full_dataloader, trainer.model, args.output_dir,
                                   device=args.device, image_shape=(51, 51))
 
@@ -118,3 +123,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(args)
+

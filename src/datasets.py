@@ -24,9 +24,12 @@ class SegmentationDataset(torch.utils.data.Dataset):
         row = self.dataframe.iloc[index]
         image = self.read_image(row)
 
+        label = None
+        if "seg_path" in row:
+            label = self.binarize_segmentation(io.imread(row["seg_path"]))
+
         if self.transform is not None:
             if "seg_path" in row:
-                label = self.binarize_segmentation(io.imread(row["seg_path"]))
                 transformed = self.transform(image=image, mask=label)
                 img = transformed["image"]
                 seg = transformed["mask"]
@@ -34,6 +37,11 @@ class SegmentationDataset(torch.utils.data.Dataset):
             else:
                 img = self.transform(image=image)["image"]
                 return row["id"], img.transpose(2, 0, 1)
+
+        if "seg_path" in row:
+            return row["id"], image.transpose(2, 0, 1), label.transpose(2, 0, 1)
+        else:
+            return row["id"], image.transpose(2, 0, 1)
 
 
 class PatchSegmentationDataset(SegmentationDataset):
@@ -82,3 +90,19 @@ class PatchSegmentationDataset(SegmentationDataset):
             label = label[:, :, :, mid_x, mid_y].flatten()
             return pat_id, patches, label
 
+
+class NumpyPatchInferenceDataset(torch.utils.data.Dataset):
+    def __init__(self, dataframe, transform=None, **args):
+        self.dataframe = dataframe
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.dataframe)
+
+    def __getitem__(self, index):
+        row = self.dataframe.iloc[index]
+        img = np.load(row["image_path"])["x"].astype("float32")
+
+        if self.transform is not None:
+            img = (self.transform(image=img.transpose(0, 2, 3, 1))["image"]).transpose(0, 3, 1, 2)
+        return [], img

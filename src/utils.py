@@ -5,6 +5,7 @@ from PIL import Image
 import os
 import src.mask_operations as mask_op
 import numpy as np
+from skimage import io
 
 
 def read_training_data_df(base_dir, img_dir="imagesTr", gt_dir="labelsTr", gt_ext=".png"):
@@ -148,14 +149,14 @@ def save_binary_masks(dataloader, model, save_dir, original_size=[400, 400], dev
 
 
 def save_patch_binary_masks(dataloader, model, save_dir, device="cpu",
-                            image_shape=(65,65), original_size=(400,400)):
+                            image_shape=(65,65), original_size=(400,400), save_images=True):
     """ Save outputs from model into images containing masks.
 
     Args:
         dataloader (torch Dataloader): initialized dataloader containing test data
         model (torch Model): torch model with weights
         save_dir (str): path to output directory
-        device (str): device that model resides in
+        device (str): device that model resides on
     """
     model.eval()
 
@@ -164,6 +165,7 @@ def save_patch_binary_masks(dataloader, model, save_dir, device="cpu",
     if "seg_path" in dataloader.dataset.dataframe.columns:
         gt = True
 
+    scores = []
     for i, data in enumerate(dataloader, 0):
         if gt:
             img_id, inputs, labels = data
@@ -172,15 +174,17 @@ def save_patch_binary_masks(dataloader, model, save_dir, device="cpu",
             img_id, inputs = data
         inputs = inputs.to(device)
 
-        outputs = model(inputs)
-
-        # reshape patched to image again
+        outputs = model(inputs.squeeze())
         predicted_image = torch.argmax(outputs, dim=1).detach().cpu().numpy().astype("bool")
-        predicted_image_reshaped = predicted_image.reshape(image_shape)
-        img = Image.fromarray(predicted_image_reshaped).resize(original_size)
+        scores.append(predicted_image)
 
-        filename = os.path.join(save_dir, str(img_id[0]) + "_label.png")
-        img.save(filename)
+        if save_images:
+            # reshape patched to image again
+            predicted_image_reshaped = predicted_image.reshape(image_shape)
+            img = Image.fromarray(predicted_image_reshaped).resize(original_size)
+
+            filename = os.path.join(save_dir, str(img_id[0]) + "_label.png")
+            img.save(filename)
 
         if gt:
             current_label = labels.detach().cpu().numpy().astype("bool")
@@ -188,3 +192,53 @@ def save_patch_binary_masks(dataloader, model, save_dir, device="cpu",
 
     pd.DataFrame(dice_scores, columns=["dice"]).to_csv(os.path.join(save_dir, "dice_scores.csv"))
     print("Average dice: {:.6f}".format(np.mean(np.array(dice_scores))))
+
+    return scores
+
+
+def create_patches_from_directory(image_read_dir, output_dir, ext=".tiff", patch_size=[32, 32], stride=[2, 2]):
+    """ Helper function to extract patches from a cell image and save to file.
+    This function is necessary if patches from a single image will not fit into memory.
+
+    Args:
+        image_read_dir (str): path to directory containing images to be cropped
+        output_dir (str): path to directory where patches will be saved
+        ext (str): image extension
+        patch_size ([int, int]): size of patches to be extracted
+        stride ([int, int]): sliding window stride length
+    """
+    list_images = glob.glob(os.path.join(image_read_dir, "*" + ext))
+    for _f in list_images:
+        image_name = os.path.basename(_f).split(".")[0]
+        print("processing {}...".format(image_name))
+        image = io.imread(_f)[:, :, :3]
+        image = np.pad(image, ((patch_size[0] // 2, patch_size[0] // 2),
+                               (patch_size[1] // 2, patch_size[1] // 2),
+                               (0, 0)))
+
+        image = torch.from_numpy(image)
+        patches = image.unfold(0, patch_size[0], stride[0]).unfold(1, patch_size[1], stride[1])
+        patches = patches.numpy()
+
+        for i in range(patches.shape[0]):
+            np.savez(os.path.join(output_dir, image_name + "_{}.npz".format(i)), x=patches[i])
+
+    print("completed.")
+
+
+def group_numpys_and_save_masks(np_predictions, df, save_dir, original_size=[400, 400]):
+    df["patient"] = ["_".join(os.path.basename(x).split("_")[:-1]) for x in df["image_path"]]
+
+    num_cols = np_predictions.shape[-1]
+    for image_name, group in df.groupby("patient"):
+        print("processing {}...".format(image_name))
+
+        img = np.zeros((group.shape[0], num_cols))
+        group["col_idx"] = [int(x.split("_")[-1].split(".")[0]) for x in group["image_path"]]
+        for idx, row in group.iterrows():
+            img[row["col_idx"], :] = np_predictions[idx]
+
+        img = Image.fromarray(img.astype("bool")).resize(original_size)
+        img.save(os.path.join(save_dir, str(image_name) + "_label.png"))
+
+
