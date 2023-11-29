@@ -25,6 +25,9 @@ if __name__ == "__main__":
         utils.create_patches_from_directory(args.data_dir, args.patch_dir,
                                             patch_size=[PATCH_SIZE, PATCH_SIZE])
 
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
+
     prediction_path = os.path.join(args.output_dir, "predictions.npz")
     if not os.path.exists(prediction_path):
         trainer = NucleasTrainer(args)
