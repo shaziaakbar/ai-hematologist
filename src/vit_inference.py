@@ -5,7 +5,7 @@ import torch
 import os
 import glob
 
-from src.segment_nucleas import NucleasTrainer, PATCH_SIZE
+from src.train_vit_nucleas import NucleasTrainer, PATCH_SIZE
 import src.utils as utils
 from src.datasets import NumpyPatchInferenceDataset
 
