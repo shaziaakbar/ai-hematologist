@@ -242,3 +242,35 @@ def group_numpys_and_save_masks(np_predictions, df, save_dir, original_size=[400
         img.save(os.path.join(save_dir, str(image_name) + "_label.png"))
 
 
+def combine_cell_and_nucleas(cell_dir, nucleas_dir, output_dir):
+    """ Read folders containing cell and nuclear segmentations (individually) and combine them into a single image.
+    Cell = 1 and nucleas = 2 in resulting image.
+
+    Args:
+        cell_dir (str): directory containing cell segmentations
+        nucleas_dir (str): directory containing nucleas segmentations
+        output_dir (str): directory where results are stored
+    """
+    list_cell = glob.glob(os.path.join(cell_dir, "*.png"))
+
+    for cell_file in list_cell:
+        image_name = os.path.basename(cell_file)
+        nucleas_file = os.path.join(nucleas_dir, image_name)
+
+        if not os.path.exists(nucleas_file):
+            raise FileNotFoundError("nucleas file not found for {}".format(image_name))
+
+        # read images
+        cell_image = io.imread(cell_file).astype("bool")
+        nucleas_image = io.imread(nucleas_file).astype("bool")
+
+        # postprocess nucleas
+
+        complete_img = np.zeros_like(cell_image).astype('uint8')
+        complete_img[cell_image == True] = 1
+        complete_img[nucleas_image == True] = 2
+
+        img = Image.fromarray(complete_img)
+        img.save(os.path.join(output_dir, image_name))
+
+
