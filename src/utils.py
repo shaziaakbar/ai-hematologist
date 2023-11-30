@@ -196,17 +196,18 @@ def save_patch_binary_masks(dataloader, model, save_dir, device="cpu",
     return scores
 
 
-def create_patches_from_directory(image_read_dir, output_dir, patch_size=[32, 32], stride=[2, 2]):
+def create_patches_from_directory(image_read_dir, output_dir, ext=".tiff", patch_size=[32, 32], stride=[2, 2]):
     """ Helper function to extract patches from a cell image and save to file.
     This function is necessary if patches from a single image will not fit into memory.
 
     Args:
         image_read_dir (str): path to directory containing images to be cropped
         output_dir (str): path to directory where patches will be saved
+        ext (str): image extension
         patch_size ([int, int]): size of patches to be extracted
         stride ([int, int]): sliding window stride length
     """
-    list_images = glob.glob(os.path.join(image_read_dir, "*"))
+    list_images = glob.glob(os.path.join(image_read_dir, "*" + ext))
     for _f in list_images:
         image_name = os.path.basename(_f).split(".")[0]
         print("processing {}...".format(image_name))
@@ -228,11 +229,9 @@ def create_patches_from_directory(image_read_dir, output_dir, patch_size=[32, 32
 def group_numpys_and_save_masks(np_predictions, df, save_dir, original_size=[400, 400]):
     df["patient"] = ["_".join(os.path.basename(x).split("_")[:-1]) for x in df["image_path"]]
 
+    num_cols = np_predictions.shape[-1]
     for image_name, group in df.groupby("patient"):
         print("processing {}...".format(image_name))
-
-        # images can be different shapes
-        num_cols = np_predictions[group[0].index].shape[-1]
 
         img = np.zeros((group.shape[0], num_cols))
         group["col_idx"] = [int(x.split("_")[-1].split(".")[0]) for x in group["image_path"]]

@@ -22,8 +22,7 @@ if __name__ == "__main__":
     if not os.path.exists(args.patch_dir):
         os.mkdir(args.patch_dir)
         print("Extracting patches...")
-        utils.create_patches_from_directory(args.data_dir, args.patch_dir,
-                                        patch_size=[PATCH_SIZE, PATCH_SIZE])
+        utils.create_patches_from_directory(args.data_dir, args.patch_dir, patch_size=[PATCH_SIZE, PATCH_SIZE])
 
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
@@ -42,9 +41,9 @@ if __name__ == "__main__":
                                                device=args.device,
                                                save_images=False)
 
-        np.savez(prediction_path, y=scores)
+        np.savez(prediction_path, y=np.stack(scores))
 
     print("Saving predictions to image files...")
     predictions = np.load(prediction_path)["y"]
-    utils.group_numpys_and_save_masks(predictions, df, args.output_dir)
+    utils.group_numpys_and_save_masks(predictions, df, args.output_dir, original_size=[360, 363])
 
