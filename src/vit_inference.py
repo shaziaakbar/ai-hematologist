@@ -23,15 +23,15 @@ if __name__ == "__main__":
         os.mkdir(args.patch_dir)
         print("Extracting patches...")
         utils.create_patches_from_directory(args.data_dir, args.patch_dir,
-                                            patch_size=[PATCH_SIZE, PATCH_SIZE])
+                                        patch_size=[PATCH_SIZE, PATCH_SIZE])
 
     if not os.path.exists(args.output_dir):
         os.mkdir(args.output_dir)
 
     prediction_path = os.path.join(args.output_dir, "predictions.npz")
+    df = pd.DataFrame(glob.glob(os.path.join(args.patch_dir, "*.npz")), columns=["image_path"])
     if not os.path.exists(prediction_path):
         trainer = NucleasTrainer(args)
-        df = pd.DataFrame(glob.glob(os.path.join(args.patch_dir, "*.npz")), columns=["image_path"])
         val_full_dataloader = trainer.get_dataloader(df, shuffle=False, bs=1, label_idx=1,
                                                      dataset_type=NumpyPatchInferenceDataset)
         model = torch.load(args.model_path)
@@ -42,7 +42,7 @@ if __name__ == "__main__":
                                                device=args.device,
                                                save_images=False)
 
-        np.savez(prediction_path, y=np.stack(scores))
+        np.savez(prediction_path, y=scores)
 
     print("Saving predictions to image files...")
     predictions = np.load(prediction_path)["y"]

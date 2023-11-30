@@ -17,7 +17,7 @@ import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 
-PATCH_SIZE = 64
+PATCH_SIZE = 32
 
 
 class NucleasTrainer(Trainer):
@@ -42,7 +42,7 @@ class NucleasTrainer(Trainer):
         if shuffle:
             # augment data during training
             init_transform = [
-                A.ShiftScaleRotate(shift_limit=0.4, scale_limit=0.2, rotate_limit=30, p=0.8),
+                A.ShiftScaleRotate(shift_limit=0.4, scale_limit=0.2, rotate_limit=30, p=1.0),
                 A.RGBShift(r_shift_limit=10, g_shift_limit=10, b_shift_limit=10, p=0.6),
                 A.RandomBrightnessContrast(brightness_limit=0.3, contrast_limit=0.3, p=0.6),
             ]
@@ -99,7 +99,7 @@ def main(_args):
 
     train_dataloader = trainer.get_dataloader(train_df, shuffle=True, bs=args.batch_size,
                                               collate_fn=collate_fn, patch_size=[PATCH_SIZE, PATCH_SIZE],
-                                              stride=[PATCH_SIZE, PATCH_SIZE])
+                                              stride=[64, 64])
     val_dataloader = trainer.get_dataloader(val_df, shuffle=False, bs=args.batch_size,
                                             collate_fn=collate_fn, patch_size=[PATCH_SIZE, PATCH_SIZE],
                                             stride=[PATCH_SIZE, PATCH_SIZE])
@@ -120,11 +120,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', metavar='path', required=True, help='path to ground truth evaluation data')
     parser.add_argument('--output_dir', metavar='path', required=True, help='path where results will be saved')
-    parser.add_argument('--num_epochs', default=50, required=False, help='number of training epochs')
+    parser.add_argument('--num_epochs', default=100, required=False, help='number of training epochs')
     parser.add_argument('--model_name', default="vit", required=False, help='type of model')
     parser.add_argument('--model_weights', default=None, required=False, help='type of model weights')
     parser.add_argument('--optimizer_name', default="adam", required=False, help='type of optimizer')
-    parser.add_argument('--batch_size', default=12, required=False)
+    parser.add_argument('--batch_size', default=24, required=False)
     parser.add_argument('--device', default="cpu", required=False)
     args = parser.parse_args()
 
