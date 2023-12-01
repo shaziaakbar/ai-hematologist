@@ -157,6 +157,9 @@ def save_patch_binary_masks(dataloader, model, save_dir, device="cpu",
         model (torch Model): torch model with weights
         save_dir (str): path to output directory
         device (str): device that model resides on
+        image_shape ([int, int]): size of image from which patches were extracted
+        original_size ([int, int]): size of image to be saved (if applicable)
+        save_images (bool): whether to save images
     """
     model.eval()
 
@@ -196,7 +199,8 @@ def save_patch_binary_masks(dataloader, model, save_dir, device="cpu",
     return scores
 
 
-def create_patches_from_directory(image_read_dir, output_dir, ext=".tiff", patch_size=[32, 32], stride=[2, 2]):
+def create_patches_from_directory(image_read_dir, output_dir, ext=".tiff",
+                                  patch_size=[32, 32], stride=[2, 2]):
     """ Helper function to extract patches from a cell image and save to file.
     This function is necessary if patches from a single image will not fit into memory.
 
@@ -227,6 +231,15 @@ def create_patches_from_directory(image_read_dir, output_dir, ext=".tiff", patch
 
 
 def group_numpys_and_save_masks(np_predictions, df, save_dir, original_size=[400, 400]):
+    """ Takes a list of predictions from model (for patches) and create segmentation mask images
+    from them.
+
+    Args:
+        np_predictions (ndarray): model predictions where dim 0 is the height of image
+        df (pandas Dataframe): containing image ids and paths
+        save_dir (str): directory to save images
+        original_size ([int, int]): dimensions of image to save
+    """
     df["patient"] = ["_".join(os.path.basename(x).split("_")[:-1]) for x in df["image_path"]]
 
     num_cols = np_predictions.shape[-1]

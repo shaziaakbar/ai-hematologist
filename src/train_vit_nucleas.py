@@ -73,6 +73,15 @@ class NucleasTrainer(Trainer):
 
 
 def collate_fn(data):
+    """ Function to collate patches from multiple images during training.
+
+    Args:
+        data (dict): Data returned from dataloader
+
+    Returns:
+        List of patient IDs, ndarray containing all patches along dim 0, corresponding
+        nuclear segmentation (if applicable)
+    """
     im = torch.concat([x[1] for x in data], axis=1).transpose(1, 0)
     pat_id = tuple(sum([list(x[0]) for x in data], []))
 

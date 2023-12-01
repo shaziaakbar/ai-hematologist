@@ -5,6 +5,13 @@ import numpy as np
 
 
 class SegmentationDataset(torch.utils.data.Dataset):
+    """ Dataset for preparing image and segmentation mask for CNN model.
+
+    Attributes:
+        dataframe (pandas DataFrame): contains paths to images (image_path) and segmentations (seg_path)
+        transform (Compose): transformation to be applied to image and segmentation
+        label_idx (int): threshold to apply to segmentation mask (0 = cell, 1 = nucleas)
+    """
     def __init__(self, dataframe, transform=None, label_idx=0):
         self.dataframe = dataframe
         self.transform = transform
@@ -14,9 +21,25 @@ class SegmentationDataset(torch.utils.data.Dataset):
         return len(self.dataframe)
 
     def binarize_segmentation(self, mask):
+        """ Get thresholded binary segmentation mask.
+
+        Args:
+            mask (ndarray): contains mask contents
+
+        Returns:
+            Ndarray containing formatted mask.
+        """
         return (mask > self.label_idx)[..., np.newaxis].astype('int')
 
     def read_image(self, row):
+        """ Read image from file.
+
+        Args:
+            row (pandas Series): selected record
+
+        Returns:
+            Ndarray containing image.
+        """
         image = io.imread(row["image_path"])[:, :, :3].astype("float32")
         return image
 
@@ -28,6 +51,7 @@ class SegmentationDataset(torch.utils.data.Dataset):
         if "seg_path" in row:
             label = self.binarize_segmentation(io.imread(row["seg_path"]))
 
+        # Apply transform
         if self.transform is not None:
             if "seg_path" in row:
                 transformed = self.transform(image=image, mask=label)
@@ -69,6 +93,7 @@ class PatchSegmentationDataset(SegmentationDataset):
         return patches
 
     def __getitem__(self, index):
+        # Get image and label from parent class
         data = super(PatchSegmentationDataset, self).__getitem__(index)
 
         label = None
@@ -77,6 +102,7 @@ class PatchSegmentationDataset(SegmentationDataset):
         else:
             pat_id, image = data
 
+        # Create patches
         image = self.extract_patches(image)
         num_rows, num_cols = image.shape[1], image.shape[2]
         patches = image.flatten(start_dim=1, end_dim=2)
@@ -85,6 +111,7 @@ class PatchSegmentationDataset(SegmentationDataset):
         if label is None:
             return pat_id, patches
         else:
+            # Split up label if provided
             label = self.extract_patches(label)
             mid_x, mid_y = label.size(-2) // 2, label.size(-1) // 2
             label = label[:, :, :, mid_x, mid_y].flatten()
@@ -92,6 +119,9 @@ class PatchSegmentationDataset(SegmentationDataset):
 
 
 class NumpyPatchInferenceDataset(torch.utils.data.Dataset):
+    """ Dataset to extract scores from patches stored in a compressed numpy file.
+    Numpy files are listed under "image_path" in dataframe.
+    """
     def __init__(self, dataframe, transform=None, **args):
         self.dataframe = dataframe
         self.transform = transform
