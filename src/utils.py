@@ -264,11 +264,9 @@ def combine_cell_and_nucleas(cell_dir, nucleas_dir, output_dir):
         cell_image = io.imread(cell_file).astype("bool")
         nucleas_image = io.imread(nucleas_file).astype("bool")
 
-        # postprocess nucleas
-
         complete_img = np.zeros_like(cell_image).astype('uint8')
         complete_img[cell_image == True] = 1
-        complete_img[nucleas_image == True] = 2
+        complete_img[(nucleas_image == True) & (cell_image == True)] = 2
 
         img = Image.fromarray(complete_img)
         img.save(os.path.join(output_dir, image_name))
